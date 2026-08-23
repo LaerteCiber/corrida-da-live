@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Corrida da LIVE 🏁</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+  :root{
+    --bg-deep:#12081f;
+    --bg-panel:#1c0f2e;
+    --pink:#ff2e88;
+    --cyan:#00e5ff;
+    --gold:#ffd166;
+    --lime:#b6ff3c;
+    --text:#f5eefc;
+    --text-dim:#b6a6cf;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg-deep);font-family:'Inter',sans-serif;color:var(--text);overflow-x:hidden;}
+  body.overlay-mode{background:transparent !important;}
+  body.overlay-mode #controlPanel, body.overlay-mode #modeBar{display:none !important;}
+
+  #app{
+    max-width:480px;
+    margin:0 auto;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+  }
+
+  /* ---------- TOP BAR ---------- */
+  #modeBar{
+    display:flex; gap:8px; padding:10px 12px 0 12px;
+  }
+  #modeBar button{
+    flex:1; border:none; border-radius:12px; padding:10px 6px;
+    font-family:'Baloo 2',sans-serif; font-weight:700; font-size:13px;
+    background:var(--bg-panel); color:var(--text-dim); cursor:pointer;
+  }
+  #modeBar button.active{ background:linear-gradient(135deg,var(--pink),#a91862); color:#fff; }
+
+  /* ---------- STAGE (game/overlay view) ---------- */
+  #stage{
+    flex:1;
+    padding:14px 14px 4px 14px;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+
+  .title-block{ text-align:center; }
+  .title-block h1{
+    font-family:'Baloo 2',sans-serif; font-weight:800; font-size:22px; margin:2px 0 0 0;
+    background:linear-gradient(90deg,var(--pink),var(--gold));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    letter-spacing:.5px;
+  }
+  .title-block .timer{
+    font-family:'Baloo 2',sans-serif; font-size:13px; color:var(--cyan); font-weight:700;
+    display:inline-block; margin-top:2px;
+  }
+
+  /* status chip */
+  #statusChip{
+    align-self:center; font-family:'Baloo 2',sans-serif; font-weight:700; font-size:12px;
+    padding:4px 14px; border-radius:20px; background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.12); color:var(--text-dim);
+  }
+  #statusChip.live{ color:#12081f; background:var(--lime); border-color:var(--lime); }
+
+  /* ---------- MULTIPLIER BADGE ---------- */
+  #multiplierBadge{
+    display:none; align-self:center;
+    font-family:'Baloo 2',sans-serif; font-weight:800; font-size:15px;
+    padding:6px 18px; border-radius:30px; color:#12081f;
+    background:linear-gradient(90deg,var(--gold),var(--lime));
+    box-shadow:0 0 18px rgba(255,209,102,.6);
+    animation:pulse 0.9s infinite;
+  }
+  @keyframes pulse{ 0%,100%{transform:scale(1);} 50%{transform:scale(1.06);} }
+
+  /* ---------- PODIUM ---------- */
+  #podium{
+    display:flex; align-items:flex-end; justify-content:center; gap:8px; min-height:96px;
+  }
+  .podium-slot{ text-align:center; width:88px; }
+  .podium-slot .medal{ font-size:26px; }
+  .podium-slot .name{ font-family:'Baloo 2',sans-serif; font-weight:700; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .podium-slot .coins{ font-size:11px; color:var(--gold); font-weight:700; }
+  .podium-slot .bar{ height:6px; border-radius:6px; margin-top:4px; }
+  .p1 .bar{ background:linear-gradient(90deg,var(--gold),#ffef9f); height:64px; width:100%; margin-top:8px; border-radius:8px 8px 0 0; }
+  .p2 .bar{ background:linear-gradient(90deg,#c9d6ea,#eef2fa); height:44px; width:100%; margin-top:8px; border-radius:8px 8px 0 0; }
+  .p3 .bar{ background:linear-gradient(90deg,#e08a4d,#f4bd8c); height:30px; width:100%; margin-top:8px; border-radius:8px 8px 0 0; }
+  .podium-stand{ display:flex; align-items:flex-end; justify-content:center; height:64px; }
+
+  /* ---------- RACE TRACK ---------- */
+  #raceTrack{
+    background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:16px;
+    padding:12px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    max-height:38vh;
+    overflow-y:auto;
+  }
+  .racer-row{ display:flex; align-items:center; gap:8px; }
+  .racer-info{ width:66px; flex-shrink:0; }
+  .racer-info .rname{ font-family:'Baloo 2',sans-serif; font-weight:700; font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .racer-info .rcoins{ font-size:10px; color:var(--text-dim); }
+  .track-lane{
+    flex:1; position:relative; height:22px; background:rgba(255,255,255,.06);
+    border-radius:20px; overflow:hidden;
+  }
+  .track-fill{
+    position:absolute; left:0; top:0; bottom:0; border-radius:20px;
+    background:linear-gradient(90deg,var(--pink),var(--cyan));
+    transition:width .5s ease;
+  }
+  .track-runner{
+    position:absolute; top:50%; transform:translate(-50%,-50%); font-size:17px;
+    transition:left .5s ease; filter:drop-shadow(0 0 4px rgba(0,0,0,.5));
+  }
+  .track-flag{ position:absolute; right:4px; top:50%; transform:translateY(-50%); font-size:14px; opacity:.7; }
+
+  /* ---------- EVENT FEED ---------- */
+  #eventFeed{
+    min-height:56px; max-height:90px; overflow-y:auto;
+    display:flex; flex-direction:column-reverse; gap:5px;
+    padding:2px 2px 6px 2px;
+  }
+  .feed-item{
+    font-size:12.5px; background:rgba(255,255,255,.05); border-radius:10px;
+    padding:6px 10px; animation:slideIn .25s ease;
+    border-left:3px solid var(--pink);
+  }
+  .feed-item b{ color:var(--gold); }
+  @keyframes slideIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  #winnerBanner{
+    display:none; text-align:center; font-family:'Baloo 2',sans-serif; font-weight:800;
+    font-size:20px; color:#12081f; background:linear-gradient(90deg,var(--gold),var(--lime));
+    border-radius:16px; padding:14px; margin:4px 0;
+  }
+
+  /* ---------- CONTROL PANEL ---------- */
+  #controlPanel{
+    background:var(--bg-panel);
+    border-top:1px solid rgba(255,255,255,.08);
+    border-radius:20px 20px 0 0;
+    padding:14px 14px 24px 14px;
+    display:flex; flex-direction:column; gap:14px;
+  }
+  .panel-section{ display:flex; flex-direction:column; gap:8px; }
+  .panel-title{ font-family:'Baloo 2',sans-serif; font-weight:700; font-size:13px; color:var(--cyan); letter-spacing:.3px; }
+  .btn-row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .btn{
+    border:none; border-radius:14px; padding:12px 10px; font-family:'Baloo 2',sans-serif;
+    font-weight:700; font-size:13px; color:#fff; cursor:pointer; flex:1; min-width:0;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .btn:active{ transform:scale(.96); }
+  .btn-like{ background:linear-gradient(135deg,#ff5f6d,#ff2e88); }
+  .btn-rose{ background:linear-gradient(135deg,#ff9de2,#ff2e88); }
+  .btn-gift{ background:linear-gradient(135deg,#ffd166,#ff9d00); color:#12081f; }
+  .btn-multi{ background:linear-gradient(135deg,#00e5ff,#0091ff); }
+  .btn-ghost{ background:rgba(255,255,255,.08); color:var(--text); }
+  .btn-danger{ background:linear-gradient(135deg,#ff4d4d,#a10000); }
+  .btn-start{ background:linear-gradient(135deg,var(--lime),#6fbf00); color:#12081f; }
+  .btn.full{ flex-basis:100%; }
+
+  select, input[type=text], input[type=number]{
+    background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14);
+    color:var(--text); border-radius:10px; padding:9px 10px; font-family:'Inter'; font-size:13px; width:100%;
+  }
+  .field-row{ display:flex; gap:8px; align-items:center; }
+  .field-row label{ font-size:11.5px; color:var(--text-dim); width:96px; flex-shrink:0; }
+
+  .collapsible-header{
+    display:flex; justify-content:space-between; align-items:center; cursor:pointer;
+  }
+  .collapsible-header .chevron{ transition:transform .2s; font-size:12px; color:var(--text-dim); }
+  .collapsible-header.open .chevron{ transform:rotate(180deg); }
+  .collapsible-body{ display:none; flex-direction:column; gap:8px; padding-top:6px; }
+  .collapsible-body.open{ display:flex; }
+
+  .connected-list{ display:flex; flex-direction:column; gap:6px; max-height:120px; overflow-y:auto; }
+  .connected-item{ display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,.04); border-radius:10px; padding:7px 10px; font-size:12.5px; }
+  .connected-item button{ background:none; border:none; color:#ff6b6b; font-size:16px; cursor:pointer; padding:0 4px; }
+
+  .toggle-row{ display:flex; justify-content:space-between; align-items:center; font-size:13px; }
+  .switch{ position:relative; width:42px; height:24px; }
+  .switch input{ opacity:0; width:0; height:0; }
+  .slider{ position:absolute; cursor:pointer; inset:0; background:rgba(255,255,255,.15); border-radius:24px; transition:.2s; }
+  .slider:before{ content:""; position:absolute; height:18px; width:18px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s; }
+  .switch input:checked + .slider{ background:var(--lime); }
+  .switch input:checked + .slider:before{ transform:translateX(18px); }
+
+  .help-note{ font-size:11px; color:var(--text-dim); line-height:1.5; background:rgba(255,255,255,.03); border-radius:10px; padding:8px 10px; }
+
+  ::-webkit-scrollbar{ width:5px; }
+  ::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.15); border-radius:10px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="modeBar">
+    <button id="btnModeControl" class="active">🎛️ Painel</button>
+    <button id="btnModeOverlay">📺 Só o Jogo</button>
+  </div>
+
+  <!-- ================= STAGE ================= -->
+  <div id="stage">
+    <div class="title-block">
+      <h1>🏁 CORRIDA DA LIVE</h1>
+      <div class="timer" id="timerDisplay">⏱ --:--</div>
+    </div>
+
+    <div id="statusChip">● Parado</div>
+    <div id="multiplierBadge">🔥 MULTIPLICADOR x2 ATIVO</div>
+
+    <div id="winnerBanner">🏆 <span id="winnerName"></span> VENCEU! 🏆</div>
+
+    <div id="podium">
+      <div class="podium-slot p2">
+        <div class="medal">🥈</div>
+        <div class="name" id="p2name">--</div>
+        <div class="coins" id="p2coins">0</div>
+        <div class="podium-stand"><div class="bar"></div></div>
+      </div>
+      <div class="podium-slot p1">
+        <div class="medal">🥇</div>
+        <div class="name" id="p1name">--</div>
+        <div class="coins" id="p1coins">0</div>
+        <div class="podium-stand"><div class="bar"></div></div>
+      </div>
+      <div class="podium-slot p3">
+        <div class="medal">🥉</div>
+        <div class="name" id="p3name">--</div>
+        <div class="coins" id="p3coins">0</div>
+        <div class="podium-stand"><div class="bar"></div></div>
+      </div>
+    </div>
+
+    <div id="raceTrack"></div>
+
+    <div id="eventFeed"></div>
+  </div>
+
+  <!-- ================= CONTROL PANEL ================= -->
+  <div id="controlPanel">
+
+    <div class="panel-section">
+      <div class="panel-title">▶️ CONTROLE DA PARTIDA</div>
+      <div class="btn-row">
+        <button class="btn btn-start" id="btnStart">▶️ Iniciar</button>
+        <button class="btn btn-danger" id="btnStop">⏸ Parar</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btnReset">🔄 Zerar Ranking</button>
+      </div>
+      <div class="field-row">
+        <label>Duração (min)</label>
+        <input type="number" id="matchDuration" value="5" min="0">
+      </div>
+      <div class="field-row">
+        <label>Meta p/ vencer</label>
+        <input type="number" id="winTarget" value="50" min="1">
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="collapsible-header" id="hdrLiveConnect">
+        <div class="panel-title">🔴 CONECTAR TIKTOK LIVE REAL</div>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="collapsible-body" id="bodyLiveConnect">
+        <div id="liveStatusText" class="help-note">Não conectado.</div>
+        <div class="field-row">
+          <label>URL do servidor</label>
+          <input type="text" id="serverUrlInput" placeholder="https://seu-servidor.onrender.com">
+        </div>
+        <div class="field-row">
+          <label>Usuário TikTok</label>
+          <input type="text" id="tiktokUserInput" placeholder="seu_usuario (sem @)">
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-start" id="btnConnectLive">🔴 Conectar</button>
+          <button class="btn btn-danger" id="btnDisconnectLive">Desconectar</button>
+        </div>
+        <div class="help-note">
+          💡 Enquanto conectado, os botões de simulação abaixo continuam funcionando normalmente — úteis como plano B se a LIVE cair.
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">🎮 SIMULAR EVENTOS (DEMO)</div>
+      <div class="field-row">
+        <label>Espectador</label>
+        <select id="demoUserSelect"></select>
+      </div>
+      <div class="btn-row">
+        <input type="text" id="newUserInput" placeholder="Nome novo espectador...">
+        <button class="btn btn-ghost" id="btnAddUser" style="flex:0 0 44px;">➕</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-like" id="btnLike">❤️ +100 Curtidas</button>
+        <button class="btn btn-rose" id="btnRose">🌹 Enviar Rosa</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-gift" id="btnGift">🎁 Presente</button>
+        <button class="btn btn-multi" id="btnMultiplier">🔥 Multiplicador x2</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="collapsible-header" id="hdrCoinConfig">
+        <div class="panel-title">🪙 CONFIGURAR MOEDAS</div>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="collapsible-body" id="bodyCoinConfig">
+        <div class="field-row"><label>Curtidas p/ moeda</label><input type="number" id="cfgLikeRatio" value="100" min="1"></div>
+        <div class="field-row"><label>Moedas por rosa</label><input type="number" id="cfgRoseCoins" value="1" min="1"></div>
+        <div class="field-row"><label>Diamantes p/ moeda</label><input type="number" id="cfgGiftRatio" value="10" min="1"></div>
+        <div class="field-row"><label>Multiplicador ativo por (s)</label><input type="number" id="cfgMultiDuration" value="15" min="1"></div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="collapsible-header" id="hdrPlayers">
+        <div class="panel-title">👥 JOGADORES CONECTADOS</div>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="collapsible-body" id="bodyPlayers">
+        <div class="connected-list" id="connectedList"></div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">✨ EFEITOS</div>
+      <div class="toggle-row">
+        <span>Confete ao vencer</span>
+        <label class="switch"><input type="checkbox" id="fxConfetti" checked><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>Feed de eventos</span>
+        <label class="switch"><input type="checkbox" id="fxFeed" checked><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="help-note">
+      💡 Toque em "📺 Só o Jogo" no topo para ver a tela limpa (sem painel) — é essa a versão que você usa como overlay na LIVE.
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  // ---------------- STATE ----------------
+  let players = {}; // name -> {coins}
+  let order = [];   // insertion order of names
+  let running = false;
+  let matchEndTime = null;
+  let matchTimerInterval = null;
+  let multiplier = 1;
+  let multiplierTimeout = null;
+  let config = {
+    likeRatio: 100,   // curtidas por moeda
+    roseCoins: 1,     // moedas por rosa
+    giftRatio: 10,    // "diamantes" por moeda
+    multiDuration: 15 // segundos
+  };
+  let winTarget = 50;
+  let hasWinner = false;
+
+  // ---------------- DOM refs ----------------
+  const $ = id => document.getElementById(id);
+  const raceTrack = $('raceTrack');
+  const eventFeed = $('eventFeed');
+  const connectedList = $('connectedList');
+  const demoUserSelect = $('demoUserSelect');
+  const statusChip = $('statusChip');
+  const multiplierBadge = $('multiplierBadge');
+  const winnerBanner = $('winnerBanner');
+
+  // seed with 3 demo players
+  ['Joao','Pedro','Maria'].forEach(addPlayer);
+
+  function addPlayer(name){
+    if(players[name]) return;
+    players[name] = { coins: 0 };
+    order.push(name);
+    refreshUserSelect();
+    renderAll();
+  }
+
+  function removePlayer(name){
+    delete players[name];
+    order = order.filter(n => n !== name);
+    refreshUserSelect();
+    renderAll();
+  }
+
+  function refreshUserSelect(){
+    demoUserSelect.innerHTML = order.map(n => `<option value="${n}">@${n}</option>`).join('');
+  }
+
+  function addCoins(name, amount, reason){
+    if(!players[name]) addPlayer(name);
+    if(!running || hasWinner) { logFeed(`⚠️ Partida parada — evento ignorado (@${name})`); return; }
+    const applied = Math.round(amount * multiplier);
+    players[name].coins += applied;
+    logFeed(reason(applied));
+    renderAll();
+    checkWinner();
+  }
+
+  function logFeed(html){
+    if(!$('fxFeed').checked) return;
+    const div = document.createElement('div');
+    div.className = 'feed-item';
+    div.innerHTML = html;
+    eventFeed.prepend(div);
+    while(eventFeed.children.length > 12) eventFeed.removeChild(eventFeed.lastChild);
+  }
+
+  function checkWinner(){
+    const top = order.slice().sort((a,b)=>players[b].coins - players[a].coins)[0];
+    if(top && players[top].coins >= winTarget && !hasWinner){
+      hasWinner = true;
+      running = false;
+      updateStatus();
+      winnerBanner.style.display = 'block';
+      $('winnerName').textContent = '@' + top;
+      if($('fxConfetti').checked) burstConfetti();
+    }
+  }
+
+  function burstConfetti(){
+    for(let i=0;i<24;i++){
+      const c = document.createElement('div');
+      c.textContent = ['🎉','✨','🎊','⭐'][i%4];
+      c.style.position='fixed';
+      c.style.left = (Math.random()*100)+'vw';
+      c.style.top = '-20px';
+      c.style.fontSize = (14+Math.random()*14)+'px';
+      c.style.zIndex = 999;
+      c.style.transition = 'top 1.6s ease-in, opacity 1.6s';
+      document.body.appendChild(c);
+      requestAnimationFrame(()=>{
+        c.style.top = '100vh';
+        c.style.opacity = '0';
+      });
+      setTimeout(()=>c.remove(), 1700);
+    }
+  }
+
+  // ---------------- RENDER ----------------
+  function renderAll(){
+    renderPodium();
+    renderTrack();
+    renderConnectedList();
+  }
+
+  function ranked(){
+    return order.slice().sort((a,b)=>players[b].coins - players[a].coins);
+  }
+
+  function renderPodium(){
+    const r = ranked();
+    const slots = [ ['p1',0], ['p2',1], ['p3',2] ];
+    slots.forEach(([prefix, idx])=>{
+      const name = r[idx];
+      $(prefix+'name').textContent = name ? '@'+name : '--';
+      $(prefix+'coins').textContent = name ? players[name].coins + ' 🪙' : '0';
+    });
+  }
+
+  function renderTrack(){
+    const maxCoins = Math.max(winTarget, ...order.map(n=>players[n].coins), 1);
+    raceTrack.innerHTML = '';
+    ranked().forEach((name, i)=>{
+      const coins = players[name].coins;
+      const pct = Math.min(100, (coins/maxCoins)*100);
+      const row = document.createElement('div');
+      row.className = 'racer-row';
+      row.innerHTML = `
+        <div class="racer-info">
+          <div class="rname">${i===0?'🥇':i===1?'🥈':i===2?'🥉':'▫️'} @${name}</div>
+          <div class="rcoins">${coins} 🪙</div>
+        </div>
+        <div class="track-lane">
+          <div class="track-fill" style="width:${pct}%"></div>
+          <div class="track-runner" style="left:${pct}%">🏃</div>
+          <div class="track-flag">🏁</div>
+        </div>`;
+      raceTrack.appendChild(row);
+    });
+  }
+
+  function renderConnectedList(){
+    connectedList.innerHTML = order.map(name => `
+      <div class="connected-item">
+        <span>@${name} — ${players[name].coins} 🪙</span>
+        <button data-name="${name}">✕</button>
+      </div>`).join('');
+    connectedList.querySelectorAll('button').forEach(btn=>{
+      btn.onclick = () => removePlayer(btn.dataset.name);
+    });
+  }
+
+  // ---------------- MATCH CONTROL ----------------
+  function updateStatus(){
+    if(hasWinner){ statusChip.textContent = '🏆 Encerrada'; statusChip.classList.remove('live'); }
+    else if(running){ statusChip.textContent = '● AO VIVO'; statusChip.classList.add('live'); }
+    else { statusChip.textContent = '● Parado'; statusChip.classList.remove('live'); }
+  }
+
+  $('btnStart').onclick = () => {
+    running = true;
+    hasWinner = false;
+    winnerBanner.style.display = 'none';
+    const minutes = parseFloat($('matchDuration').value) || 0;
+    winTarget = parseInt($('winTarget').value) || 50;
+    if(minutes > 0){
+      matchEndTime = Date.now() + minutes*60000;
+      clearInterval(matchTimerInterval);
+      matchTimerInterval = setInterval(tickTimer, 1000);
+      tickTimer();
+    } else {
+      matchEndTime = null;
+      $('timerDisplay').textContent = '⏱ Sem limite';
+    }
+    updateStatus();
+    logFeed('🟢 <b>Partida iniciada!</b>');
+  };
+
+  $('btnStop').onclick = () => {
+    running = false;
+    clearInterval(matchTimerInterval);
+    updateStatus();
+    logFeed('🔴 <b>Partida parada.</b>');
+  };
+
+  $('btnReset').onclick = () => {
+    order.forEach(n => players[n].coins = 0);
+    hasWinner = false;
+    winnerBanner.style.display = 'none';
+    renderAll();
+    logFeed('🔄 <b>Ranking zerado.</b>');
+  };
+
+  function tickTimer(){
+    if(!matchEndTime) return;
+    const remaining = Math.max(0, matchEndTime - Date.now());
+    const m = Math.floor(remaining/60000);
+    const s = Math.floor((remaining%60000)/1000);
+    $('timerDisplay').textContent = `⏱ ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    if(remaining <= 0){
+      clearInterval(matchTimerInterval);
+      running = false;
+      updateStatus();
+      logFeed('⏰ <b>Tempo esgotado!</b>');
+    }
+  }
+
+  // ---------------- DEMO EVENT BUTTONS ----------------
+  $('btnAddUser').onclick = () => {
+    const val = $('newUserInput').value.trim();
+    if(val){ addPlayer(val); $('newUserInput').value=''; }
+  };
+
+  function selectedUser(){ return demoUserSelect.value; }
+
+  $('btnLike').onclick = () => {
+    const name = selectedUser();
+    // Este botão sempre simula um lote de 100 curtidas.
+    // config.likeRatio = quantas curtidas valem 1 moeda.
+    const coinsFromLikes = Math.max(1, Math.round(100 / config.likeRatio));
+    addCoins(name, coinsFromLikes, (applied)=>`❤️ <b>@${name}</b> enviou 100 curtidas → +${applied} moeda(s)`);
+  };
+
+  $('btnRose').onclick = () => {
+    const name = selectedUser();
+    addCoins(name, config.roseCoins, (applied)=>`🌹 <b>@${name}</b> enviou uma rosa → +${applied} moeda(s)`);
+  };
+
+  $('btnGift').onclick = () => {
+    const name = selectedUser();
+    const giftValue = [50,100,200,500][Math.floor(Math.random()*4)]; // diamantes simulados
+    const coinsFromGift = Math.max(1, Math.round(giftValue / config.giftRatio));
+    addCoins(name, coinsFromGift, (applied)=>`🎁 <b>@${name}</b> enviou um presente (${giftValue} 💎) → +${applied} moeda(s)`);
+  };
+
+  $('btnMultiplier').onclick = () => {
+    multiplier = 2;
+    multiplierBadge.style.display = 'inline-block';
+    multiplierBadge.textContent = `🔥 MULTIPLICADOR x2 ATIVO`;
+    clearTimeout(multiplierTimeout);
+    multiplierTimeout = setTimeout(()=>{
+      multiplier = 1;
+      multiplierBadge.style.display = 'none';
+    }, config.multiDuration * 1000);
+    logFeed(`🔥 <b>Multiplicador x2 ativado por ${config.multiDuration}s!</b>`);
+  };
+
+  // ---------------- CONFIG BINDINGS ----------------
+  $('cfgLikeRatio').oninput = e => config.likeRatio = parseInt(e.target.value)||100;
+  $('cfgRoseCoins').oninput = e => config.roseCoins = parseInt(e.target.value)||1;
+  $('cfgGiftRatio').oninput = e => config.giftRatio = parseInt(e.target.value)||10;
+  $('cfgMultiDuration').oninput = e => config.multiDuration = parseInt(e.target.value)||15;
+  $('winTarget').oninput = e => winTarget = parseInt(e.target.value)||50;
+
+  // ---------------- COLLAPSIBLES ----------------
+  function bindCollapse(hdrId, bodyId){
+    $(hdrId).onclick = () => {
+      $(hdrId).classList.toggle('open');
+      $(bodyId).classList.toggle('open');
+    };
+  }
+  bindCollapse('hdrCoinConfig','bodyCoinConfig');
+  bindCollapse('hdrPlayers','bodyPlayers');
+  bindCollapse('hdrLiveConnect','bodyLiveConnect');
+
+  // ---------------- MODE SWITCH (control vs overlay view) ----------------
+  $('btnModeControl').onclick = () => {
+    document.body.classList.remove('overlay-mode');
+    $('btnModeControl').classList.add('active');
+    $('btnModeOverlay').classList.remove('active');
+  };
+  $('btnModeOverlay').onclick = () => {
+    document.body.classList.add('overlay-mode');
+    $('btnModeOverlay').classList.add('active');
+    $('btnModeControl').classList.remove('active');
+  };
+
+  // if opened with ?overlay=1, start directly in clean overlay mode (for OBS browser source)
+  if(new URLSearchParams(location.search).get('overlay') === '1'){
+    document.body.classList.add('overlay-mode');
+    $('modeBar').style.display = 'none';
+  }
+
+  // ---------------- CONEXÃO COM A LIVE REAL ----------------
+  let socket = null;
+  const liveStatusText = $('liveStatusText');
+
+  function setLiveStatus(html){ liveStatusText.innerHTML = html; }
+
+  $('btnConnectLive').onclick = () => {
+    const serverUrl = $('serverUrlInput').value.trim().replace(/\/$/, '');
+    const tiktokUser = $('tiktokUserInput').value.trim().replace('@','');
+    if(!serverUrl || !tiktokUser){
+      setLiveStatus('⚠️ Preencha a URL do servidor e o usuário do TikTok.');
+      return;
+    }
+    if(socket) socket.disconnect();
+
+    setLiveStatus('🔄 Conectando ao servidor...');
+    socket = io(serverUrl, { transports: ['websocket','polling'] });
+
+    socket.on('connect', () => {
+      setLiveStatus('🔌 Conectado ao servidor. Entrando na LIVE de @'+tiktokUser+'...');
+      fetch(serverUrl + '/connect', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ username: tiktokUser })
+      }).catch(()=> setLiveStatus('❌ Não foi possível falar com o servidor. Confira a URL.'));
+    });
+
+    socket.on('connect_error', () => {
+      setLiveStatus('❌ Não foi possível conectar ao servidor. Confira a URL (deve começar com https://).');
+    });
+
+    socket.on('status', (data) => {
+      if(data.connected){
+        setLiveStatus('🟢 <b>Conectado à LIVE de @'+data.username+'!</b> Eventos reais chegando.');
+      } else if(data.ended){
+        setLiveStatus('⚪ A LIVE de @'+(data.username||tiktokUser)+' foi encerrada.');
+      } else if(data.error){
+        setLiveStatus('❌ Erro ao conectar: '+data.error+'. Verifique se @'+tiktokUser+' está ao vivo agora.');
+      } else {
+        setLiveStatus('⚪ Desconectado.');
+      }
+    });
+
+    socket.on('like', (data) => {
+      const coins = Math.max(1, Math.round(data.novasCurtidas / config.likeRatio));
+      if(coins > 0) addCoins(data.user, coins, (applied)=>`❤️ <b>@${data.user}</b> curtiu (+${data.novasCurtidas}) → +${applied} moeda(s)`);
+    });
+
+    socket.on('gift', (data) => {
+      const isRose = (data.giftName||'').toLowerCase().includes('rose');
+      const qtd = data.repeatCount || 1;
+      const coins = isRose
+        ? config.roseCoins * qtd
+        : Math.max(1, Math.round((data.diamondCount||0) / config.giftRatio));
+      addCoins(data.user, coins, (applied)=>`🎁 <b>@${data.user}</b> enviou ${qtd}x ${data.giftName} → +${applied} moeda(s)`);
+    });
+
+    socket.on('chat', (data) => {
+      if(!players[data.user]) addPlayer(data.user);
+      logFeed(`💬 <b>@${data.user}</b>: ${data.comment}`);
+    });
+
+    socket.on('member', (data) => {
+      if(!players[data.user]) addPlayer(data.user);
+      logFeed(`👋 <b>@${data.user}</b> entrou na live`);
+    });
+  };
+
+  $('btnDisconnectLive').onclick = () => {
+    const serverUrl = $('serverUrlInput').value.trim().replace(/\/$/, '');
+    if(serverUrl){
+      fetch(serverUrl + '/disconnect', { method:'POST' }).catch(()=>{});
+    }
+    if(socket){ socket.disconnect(); socket = null; }
+    setLiveStatus('⚪ Desconectado.');
+  };
+
+  // ---------------- INIT ----------------
+  refreshUserSelect();
+  renderAll();
+  updateStatus();
+})();
+</script>
+</body>
+</html>
